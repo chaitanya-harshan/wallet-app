@@ -5,8 +5,6 @@ const app = express();
 app.use(express.json())
 
 app.post("/hdfcWebhook", async (req, res) => {
-    //TODO: Add zod validation here
-    //TODO: HDFC bank should ideally send us a secret so we know this is sent by them
     const paymentInformation: {
         token: string;
         userId: string;
@@ -18,6 +16,42 @@ app.post("/hdfcWebhook", async (req, res) => {
     };
 
     try {
+        // First, verify that the token exists in the onRampTransaction table
+        const existingTransaction = await db.onRampTransaction.findUnique({
+            where: {
+                token: paymentInformation.token
+            }
+        });
+
+        // Verify the transaction exists and details match
+        if (!existingTransaction) {
+            return res.status(400).json({
+                message: "Invalid token: Transaction not found"
+            });
+        }
+
+        // Verify the userId matches
+        if (existingTransaction.userId !== Number(paymentInformation.userId)) {
+            return res.status(400).json({
+                message: "Invalid transaction: User ID mismatch"
+            });
+        }
+
+        // Verify the amount matches
+        if (existingTransaction.amount !== Number(paymentInformation.amount)) {
+            return res.status(400).json({
+                message: "Invalid transaction: Amount mismatch"
+            });
+        }
+
+        // Verify the transaction is still in Processing status (prevent duplicate processing)
+        if (existingTransaction.status !== "Processing") {
+            return res.status(400).json({
+                message: `Invalid transaction: Transaction already ${existingTransaction.status}`
+            });
+        }
+
+        // All verifications passed, proceed with updates
         await db.$transaction([
             db.balance.updateMany({
                 where: {
