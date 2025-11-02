@@ -13,18 +13,31 @@ export async function createOnRampTransaction(amount: number, provider: string) 
             message: "User not logged in"
         }
     }
-    await prisma.onRampTransaction.create({
-        data: {
-            userId: Number(userId), // 1
-            amount: amount,
-            status: "Processing",
-            startTime: new Date(),
-            provider,
-            token: token
-        }
-    })
+    await prisma.$transaction([
+        prisma.balance.updateMany({
+            where: {
+                userId: Number(userId)
+            },
+            data: {
+                locked: {
+                    increment: amount
+                }
+            }
+        }),
+        prisma.onRampTransaction.create({
+            data: {
+                userId: Number(userId),
+                amount: amount,
+                status: "Processing",
+                startTime: new Date(),
+                provider,
+                token: token
+            }
+        })
+    ])
 
     return {
-        message: "On ramp transaction added"
+        message: "On ramp transaction added",
+        token: token
     }
 }
